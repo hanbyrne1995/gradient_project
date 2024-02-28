@@ -250,3 +250,27 @@ def CropTrendsDf(trendsDf, offset):
     trendsDfCrop = trendsDf.iloc[keepRows, keepCols]
     
     return trendsDfCrop
+
+def lat_lon_res_Eq(ds):
+    '''
+    Small function that calculates the mean resolution and std of that resolution between lats -5 to 5.
+    
+    Inputs:
+        Model dataset that has latitude and longitude dimensions labelled as such
+        
+    Ouputs:
+        Prints the resolution mean and std
+    '''
+    
+    
+    maskEq = (ds.lat.values > -5) & (ds.lat.values < 5)
+    latEq = ds.lat.values[maskEq]
+
+    meanlatEq = np.mean(np.diff(latEq))
+    stdlatEq = np.std(np.diff(latEq))
+
+    meanLon = np.mean(np.diff(ds.lon.values))
+    stdLon = np.std(np.diff(ds.lon.values))
+
+    print('Latitude: Mean: %.2f and SD: %.3f' %(meanlatEq, stdlatEq))
+    print('Longitude: Mean: %.2f and SD: %.3f' %(meanLon, stdLon))
