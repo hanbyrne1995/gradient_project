@@ -203,6 +203,98 @@ class CalculateMMEGradient:
         self.CalculateMean(gradientsDir)
         return self.gradientMean
         
+class CalculateObsGradient:
+    def __init__(self, modelInput, datasetName):
+        '''
+        Gradient calculator class for observational data
+        ** Note that current variable is sst; change this in CalculateGradient function below **
+        Calculates the area-weighted average in the two regions of interest; definitions per Seager et al 2022
+        - gradient is calculated as western Pacific box average minus eastern Pacific box average
+        - latitude and longitude extents defined per this paper
+        
+        :param modelInput: Instance of ModelInput class
+        :param datasetName: String of the name of the dataset in question (e.g., 'Hadley')
+        '''
+        self.ds = modelInput
+        self.modelName = datasetName
+        self.boxE = None # initialising the East and West boxes to be filled
+        self.boxW = None
+        self.weightsE = None
+        self.weightsW = None
+        self.meansstE = None
+        self.meansstW = None
+        self.gradient = self.ExecuteAllSteps()
+        
+    def SaveAttrs(self):
+        '''
+        Saves the attributes of the dataset as the modelname that we can use to identify the model going forward
+        '''
+        
+        try:
+            selected_attrs = ['parent_source_id', 'variant_label'] 
+            attributes = {attr: self.ds.attrs[attr] for attr in selected_attrs if attr in self.ds.attrs}
+            self.modelName = '_'.join(attributes.values())
+            
+            # print('Successful attribute finding')
+            
+        except Exception as e:
+            
+            print(f'Error in loading attributes to dictionary: {e}')
+        
+        return self.modelName
+        
+    def SliceRegions(self):
+        '''
+        Slice the data into the regions defined in Seager et al 2022:
+            East: lat: -3 to 3; lon: 190 to 270
+            West: lat: -3 to 3; lon: 140 to 170
+        '''
+        try:
+            # region_East
+            lonminE, lonmaxE = 190, 270
+            latminE, latmaxE = -3,3
+
+            # region_West
+            lonminW, lonmaxW = 140, 170
+            latminW, latmaxW = -3, 3
+
+            # slicing the data into these regions
+            self.boxE = self.ds.sst.sel(lon = slice(lonminE, lonmaxE), lat = slice(latmaxE, latminE))
+            self.boxW = self.ds.sst.sel(lon = slice(lonminW, lonmaxW), lat = slice(latmaxW, latminW))
+
+            # print('Successful region slicing')
+
+        except Exception as e:
+            
+            print(f'Error slicing regions: {e}')
+            
+    def CalculateGradient(self):
+        '''
+        Calculates the difference in weighted average sst variable (West - East)
+        '''
+        try:
+            # note that this isn't regridded but there isn't areacello available so will estimate using latitude
+            self.weightsE = np.cos(np.radians(self.boxE.lat))
+            self.weightsW = np.cos(np.radians(self.boxW.lat))
+
+            # calculating the mean monthly weighted SST for each box
+            self.meansstE = self.boxE.weighted(self.weightsE).mean(('lat', 'lon'), skipna = True)
+            self.meansstW = self.boxW.weighted(self.weightsW).mean(('lat', 'lon'), skipna = True)
+
+            # calculate the temperature difference (W - E)
+            self.gradient = self.meansstW - self.meansstE
+            
+            # print('Successful gradient calculation')
+        
+        except Exception as e:
+            
+            print(f'Error calculating gradient: {e}')
+        
+    def ExecuteAllSteps(self):
+        self.SliceRegions()
+        self.CalculateGradient()
+        return self.gradient
+        
         
 class Trend:
     def __init__(self, gradient):
@@ -229,12 +321,12 @@ class Trend:
             # initialising timing constants
             monStart = 1 # January
             monEnd = 12   # December
-            yearStart = 1850 
+            yearStart = 1870 # Note that this can be changed 
             yearEnd = 2022 
             dayStart = 1
             dayEnd = 31
             interval = 1 # years
-            trendLength = 120 # months # FIX THIS
+            trendLength = 120 # months
             minTrend = 20 # years
             self.trends = {}
 
@@ -347,6 +439,7 @@ class TrendPlotting:
             plt.title(title)
             plt.ylabel('End year')
             plt.xlabel('Start year')
+
             
         except Exception as e:
             print(f'Error in plotting trends: {e}')
