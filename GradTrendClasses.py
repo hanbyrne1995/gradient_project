@@ -12,7 +12,7 @@ from collections import defaultdict
 import seaborn as sns
 from matplotlib import pyplot as plt
 from matplotlib.ticker import MaxNLocator
-
+import os
 
 class ModelInput:
     def __init__(self, modelID):
@@ -200,7 +200,7 @@ class CalculateMMEGradient:
         self.gradientMean = self.gradientMean.ts.sel(time = slice('1850-01-16T12:00:00.000000000', '2022-12-16T12:00:00.000000000'))
 
     def ExecuteAllSteps(self):
-        self.CalculateMean(gradientsDir)
+        self.CalculateMean(self.gradientsDir)
         return self.gradientMean
         
 class CalculateObsGradient:
@@ -436,9 +436,9 @@ class TrendPlotting:
             plt.xticks(rotation=0)
             plt.yticks(rotation=45)
             title = self.modelName
-            plt.title(title)
-            plt.ylabel('End year')
-            plt.xlabel('Start year')
+            plt.title(title, fontsize = 16)
+            plt.ylabel('End year', fontsize = 12)
+            plt.xlabel('Start year', fontsize = 12)
 
             
         except Exception as e:
