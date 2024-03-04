@@ -274,3 +274,48 @@ def lat_lon_res_Eq(ds):
 
     print('Latitude: Mean: %.2f and SD: %.3f' %(meanlatEq, stdlatEq))
     print('Longitude: Mean: %.2f and SD: %.3f' %(meanLon, stdLon))
+    
+
+def CalculateConcatJump(gradientsDir):
+    '''
+    Function that calculates the jump in the gradient between the end of the historical period and the start of the scenario period normalised 
+    by the standard deviation of the historical
+    
+    Inputs:
+        gradientsDir: directory containing gradient time series
+        
+    Outputs:
+        A list of these values (in units of std)
+    '''
+    # run a for loop that concatenates all of the input files along the same new dimension ('gradient') then takes the mean along that dimension
+    os.chdir(gradientsDir)
+
+    # get a list of all of the files in the directory (getting rid of the python checkpoints one)
+    gradientFiles = os.listdir(gradientsDir)
+    gradientFiles = [f for f in gradientFiles if '.nc' in f]
+
+    # now iterate through the list and concatenate them
+    # adding in another line to check for jump at the concatenation point relative to standard deviation of the historical period
+
+    # first initialise an xarray file for concatenation
+    file1 = xr.open_dataset(gradientFiles[0])
+
+    # have to do the first one manually because of the structure of the for loop
+    concatJump = []
+
+    histStart = '1850-01-16T12:00:00.000000000'
+    histEnd = '2014-12-16T12:00:00.000000000'
+    scenStart = '2015-01-16T12:00:00.000000000'
+    stdHist = file1.sel(time = slice(histStart, histEnd)).std(dim = 'time').ts.item()
+    jump = (file1.sel(time = histEnd) - file1.sel(time = scenStart)).ts.item()
+    concatJump.append(jump/stdHist)
+
+    for index, file in enumerate(gradientFiles):
+        if index > 0:        
+            # calculating the jump relative to std
+            modelGradient = xr.open_dataset(file)
+            stdHist = modelGradient.sel(time = slice(histStart, histEnd)).std(dim = 'time').ts.item()
+            jump = (modelGradient.sel(time = histEnd) - modelGradient.sel(time = scenStart)).ts.item()
+            concatJump.append(jump/stdHist)
+            
+    return concatJump
