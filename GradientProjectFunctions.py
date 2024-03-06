@@ -1,14 +1,17 @@
 # Functions for gradient project
 
-# analysis functions
+# analysis libraries
 import numpy as np
 import xarray as xr
 from math import exp, pi, sin, sqrt, log, radians, isnan
 from scipy.stats import linregress
-import cftime
+import random
+
+# data handling libraries
 import pandas as pd
 import nc_time_axis
-import random
+from collections import defaultdict
+import cftime
 
 def ClassifyModels(modelList):
     
@@ -319,3 +322,126 @@ def CalculateConcatJump(gradientsDir):
             concatJump.append(jump/stdHist)
             
     return concatJump
+
+def DictToDf(dictionary):
+    '''
+    Function that takes in a dictionary with keys that are date tuples and outputs a dataframe; designed with the intention of creating triangle plots
+    
+    Inputs:
+        dictionary: dictionary that has date tuples as keys (in the format startDate, endDate) and has one value per tuple for the values (in 
+        most cases likely the trend value)
+        
+    Outputs:
+        dataframe with start date as the columns and end date as the rows with one value of trend for every instance that a trend was stored; nans for the other values
+    '''
+    
+    dfOut = pd.DataFrame(list(dictionary.items()), columns = ['Year', 'Trend'])
+    dfOut[['start_year', 'end_year']] = pd.DataFrame(dfOut['Year'].tolist(), index = dfOut.index)
+    dfOut.drop('Year', axis = 1, inplace = True)
+    dfOut = dfOut.pivot('end_year', 'start_year', 'Trend')
+    dfOut = dfOut.sort_index(ascending = False)
+    
+    return dfOut
+
+
+def TrendsDictFromFiles(trendsDir):
+    '''
+    Function that takes in a path to a directory with csv files of trends for start and end years and creates a dictionary of these trends for all of the files in the directory
+    Data is cropped to start and end dates (i.e., earliest start and end date and latest start date)
+    
+    Inputs:
+        trendsDir: Directory containing trends csv files; these files should have start years as columns and end years as rows
+    
+    Outputs:
+        trendsDict: Dictionary whose keys are start date, end date tuples and data points are the trends from all of the files for these start and end points
+    '''
+   
+    # get a list of all of the files in the directory (getting rid of the python checkpoints one)
+    trendFiles = os.listdir(trendsDir)
+    trendFiles = [f for f in trendFiles if '.csv' in f]
+
+    # initialise the dictionary
+    trendsDict = defaultdict(list)
+
+    # setting time limits for the periods that we're interested in (specifically the start and end dates at the start of the series)
+    firstStartYear = 1870
+    firstEndYear = 1890
+    lastStartYear = 2002
+
+    for file in trendFiles:
+        trendFile = pd.read_csv(file, index_col = 0)
+        trendFile.columns = [int(col) for col in trendFile.columns]
+
+        # cropping to the period that we're interested in: 1870 and the first start and 1890 as the first end
+        keepCols = [col for col in trendFile.columns if (col >= firstStartYear) & (col <= lastStartYear)]
+        keepRows = [row for row in trendFile.index if row >= firstEndYear]
+        trendFile = trendFile.loc[keepRows, keepCols]
+
+        # iterate through the start and end years
+        for startYear in trendFile.columns.tolist():
+            for endYear in trendFile.index.tolist():
+                if (endYear > startYear):
+                    trend = trendFile.loc[endYear, startYear]
+                    trendsDict[startYear, endYear].append(trend)
+
+    trendsDict = dict(trendsDict)
+    
+    return trendsDict
+
+
+def CalculateTrendPercentile(trendsDict, perLower, perUpper):
+    '''
+    Function that takes in a dictionary of trends with start date end date tuples as the keys and trends as the values; also takes in upper and lower percentile and 
+    returns those values in two dictionaries
+    
+    Inputs
+        trendsDict: dictionary of trends with start date, end date tuples as keys and trends as values
+        perLower, perUpper: upper and lower percentile bounds
+        
+    Outputs
+        dictLower: trend that corresponds with lower percentile for each pair of dates
+        dictUpper: trend that corresponds with upper percentile for each pair of dates
+    '''
+    
+    dictLower = defaultdict(list)
+    dictUpper = defaultdict(list)
+
+    # loop through the keys and save the values
+    for key in trendsDict:
+        dictLower[key] = np.percentile(trendsDict[key], perLower)
+        dictUpper[key] = np.percentile(trendsDict[key], perUpper)
+
+    dictLower = dict(dictLower)
+    dictUpper = dict(dictUpper)
+    
+    return dictLower, dictUpper
+
+def FlagInRange(dictLower, dictUpper, observations):
+    '''
+    Function that flags the dates for which the observations lie within the defined range of the trends.
+    
+    Inputs:
+        dictLower, dictUpper: dictionaries of upper and lower percentile trends from the model spread
+        observations: dictionary of trends from the observational dataset (or any dataset for which you want to check the points in range)
+        
+    Outputs:
+        dictObsInRange: dictionary of start and end date tuples as keys, where 1's indicate that the observations are within range and 0's that there are no
+        nan's are everywhere else
+    '''
+    dictObsInRange = defaultdict(list)
+
+    for key in observations:
+        if key in dictLower.keys():
+            if not (np.isnan(dictLower[key]) | np.isnan(dictUpper[key])):
+                if (observations[key] > dictLower[key]) & (observations[key] < dictUpper[key]):
+                    dictObsInRange[key] = 1
+                else:
+                    dictObsInRange[key] = 0
+            else:
+                dictObsInRange[key] = np.nan
+        else:
+            dictObsInRange[key] = np.nan
+
+    dictObsInRange = dict(dictObsInRange)
+    
+    return dictObsInRange
