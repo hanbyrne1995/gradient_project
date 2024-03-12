@@ -13,6 +13,12 @@ import nc_time_axis
 from collections import defaultdict
 import cftime
 
+# systems functions
+import os
+
+# my own functions
+from GradTrendClasses import ModelInput, Gradient
+
 def ClassifyModels(modelList):
     
     '''
@@ -35,6 +41,7 @@ def ClassifyModels(modelList):
     modelsDict = defaultdict(list)
     
     nModels = len(modelList)
+    count = 0
     start_year = 1850
     monStart = 1
     dayStart = 31 # because these are sometimes on the 16th of the month
@@ -43,6 +50,8 @@ def ClassifyModels(modelList):
     dayEnd = 1  # because these are sometimes on the 16th of the month as well
     
     for url in modelList:
+        # just to keep track while it's running
+        count +=1
 
         ds = xr.open_dataset(url)
         
@@ -62,9 +71,12 @@ def ClassifyModels(modelList):
         # save the incomplete models to a different dictionary titled with their name
         else:
             modelName = '_'.join((ds.attrs['parent_source_id'], ds.attrs['variant_label']))
-            modelsDict[modelName].append(url)    
+            modelsDict[modelName].append(url)  
+        
+        print(f'Classification complete: {count} / {nModels}')
     
     modelsDict = dict(modelsDict)
+    
     return modelsDict
     
 # defining a function to concatenate shorter time series
@@ -136,6 +148,7 @@ def ExtendPeriod(key, modelInput, scenarioModels):
     '''
     # the way that this runs depends on whether there's a scenario that matches the historical run in terms of parent
     
+    
     if key in list(scenarioModels.keys()):
 
         # execute the code for the situation in which we can directly concatenate the arrays
@@ -147,6 +160,7 @@ def ExtendPeriod(key, modelInput, scenarioModels):
 
         # execute the code for the situation in which you have to randomise the assigment
         modelHistID = modelInput.ds.attrs['source_id']
+        runHist = modelInput.ds.attrs['variant_label']
 
         # now randomly select one of the models from the same source_id
         # create a list of source_IDs (as in model names) so that we can choose an index from that list and randomise
@@ -170,7 +184,7 @@ def ExtendPeriod(key, modelInput, scenarioModels):
         scenarioRandom = list(scenarioModels)[random.choice(indicesMatch)]
         dsScenario = ModelInput(scenarioModels[scenarioRandom][0]).ds
         modelFullPeriod = xr.concat([modelInput.ds, dsScenario], dim = 'time')
-        print(f'Random - Hist: {modelHistID} and Scenario: {scenarioModels[scenarioRandom][0]}')
+        print(f'Random - Hist: {modelHistID} - {runHist} and Scenario: {scenarioModels[scenarioRandom][0]}')
     
     return modelFullPeriod
     
@@ -191,6 +205,8 @@ def CreateScenarioDictionary(modelListScenario):
     scenarioModels = defaultdict(list)
 
     # dates for checking that the scenario fits into the right time
+    nModels = len(modelListScenario)
+    count = 0
     start_year = 2015
     monStart = 1
     dayStart = 31 # because these are sometimes on the 16th of the month
@@ -199,6 +215,7 @@ def CreateScenarioDictionary(modelListScenario):
     dayEnd = 1  # because these are sometimes on the 16th of the month as well
 
     for model in modelListScenario:
+        count +=1
         # check that the scenario actually spans the time that we need before saving it
         ds = xr.open_dataset(model)
         sourceID = ds.attrs['source_id']
@@ -218,6 +235,9 @@ def CreateScenarioDictionary(modelListScenario):
         if (ds.time[0] <= start_date) & (ds.time[-1] >= end_date):
             # append the value to the list using the source_id as the key
             scenarioModels[scenarioID].append(model)
+        
+        # keeping track of progress
+        print(f'Scenario dictionary complete: {count} / {nModels}')
 
     # save the default dict as a dict
     scenarioModels = dict(scenarioModels)
@@ -358,7 +378,7 @@ def TrendsDictFromFiles(trendsDir):
    
     # get a list of all of the files in the directory (getting rid of the python checkpoints one)
     trendFiles = os.listdir(trendsDir)
-    trendFiles = [f for f in trendFiles if '.csv' in f]
+    trendFiles = [f for f in trendFiles if '.csv' in f and 'CanESM5' in f] # TEMPORARY TO LIMIT THE TEST 0312
 
     # initialise the dictionary
     trendsDict = defaultdict(list)
