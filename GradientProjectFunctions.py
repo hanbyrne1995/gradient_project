@@ -6,6 +6,7 @@ import xarray as xr
 from math import exp, pi, sin, sqrt, log, radians, isnan
 from scipy.stats import linregress
 import random
+from scipy.stats import percentileofscore
 
 # data handling libraries
 import pandas as pd
@@ -364,13 +365,14 @@ def DictToDf(dictionary):
     return dfOut
 
 
-def TrendsDictFromFiles(trendsDir):
+def TrendsDictFromFiles(trendsDir, modelName):
     '''
     Function that takes in a path to a directory with csv files of trends for start and end years and creates a dictionary of these trends for all of the files in the directory
     Data is cropped to start and end dates (i.e., earliest start and end date and latest start date)
     
     Inputs:
         trendsDir: Directory containing trends csv files; these files should have start years as columns and end years as rows
+        modelName: string with the name of the model that you are retrieving files for (e.g., MIROC6)
     
     Outputs:
         trendsDict: Dictionary whose keys are start date, end date tuples and data points are the trends from all of the files for these start and end points
@@ -378,7 +380,7 @@ def TrendsDictFromFiles(trendsDir):
    
     # get a list of all of the files in the directory (getting rid of the python checkpoints one)
     trendFiles = os.listdir(trendsDir)
-    trendFiles = [f for f in trendFiles if '.csv' in f and 'CanESM5' in f] # TEMPORARY TO LIMIT THE TEST 0312
+    trendFiles = [f for f in trendFiles if '.csv' in f and modelName in f]
 
     # initialise the dictionary
     trendsDict = defaultdict(list)
@@ -465,3 +467,51 @@ def FlagInRange(dictLower, dictUpper, observations):
     dictObsInRange = dict(dictObsInRange)
     
     return dictObsInRange
+
+def CalculateModelRange(dictLower, dictUpper):
+    '''
+    Function that takes in two dictionaries of percentile values and calculates the difference between them (i.e., the range)
+    
+    Inputs
+        dictUpper, dictLower: outputs from the CalculateTrendPercentile function: two dictionaries with values of upper and lower percentile where the keys are start
+        and end date tuples
+    
+    Outputs
+        dfRange: dataframe of the range for every start and end point
+    '''
+    # creating a new function that calculates the 95% range of the models
+    dictRange = defaultdict(list)
+
+    # iterate through dictionary
+    for key in dictLower:
+        dictRange[key] = dictUpper[key] - dictLower[key]
+
+    # making a dataframe for this dictionary
+    dfRange = DictToDf(dictRange)
+    
+    return dfRange
+
+def CalculateObsPercentile(trendsDict, trendsObsDict):
+    '''
+    Function that takes in a dictionary of model trends and a dictionary of observed trends and calculates the percentile of the obs trend relative to the dist of the model trends
+    
+    Inputs
+        trendsDict: a dictionary of model trends where the keys are start, end date tuples and the values are all of the trends from the models that are being 
+        included for those dates
+        trendsObsDict: a dictionary of observed trends where the keys are start, end date tuples and values are trends for those dates
+    '''
+
+    dictObsPercentile = defaultdict(list)
+
+    # iterate through the dictionary
+
+    for key in trendsDict:
+        if np.isnan(trendsObsDict[key]):
+            dictObsPercentile[key] = np.nan
+        else:
+            dictObsPercentile[key] = percentileofscore(trendsDict[key], trendsObsDict[key])
+
+    # creating a dataframe for the ObsPercentile
+    dfObsPercentile = DictToDf(dictObsPercentile)
+    
+    return dfObsPercentile
