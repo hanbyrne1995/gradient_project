@@ -163,25 +163,27 @@ class Gradient:
         return self.gradient
         
 class CalculateMMEGradient:
-    def __init__(self, gradientsDir):
+    def __init__(self, gradientsDir, modelName):
         '''
         Class that takes in the directory of the pre-calcalulated .nc gradient files, concatenates them and calculates the mean gradient across all of them (specific to MME)
         
         :param: gradientsDir: directory with gradient files
+        :param: modelName: name of the model in question
         
         Outputs: gradientMean: dataarray with the mean gradient calculated, modelName pulled from the file names
         '''
         self.gradientsDir = gradientsDir
+        self.modelName = modelName
         self.gradient = self.ExecuteAllSteps()
-        self.modelName = 'MIROC_MME' # THIS IS SPECIFIC TO THIS TRIAL RUN
+
         
-    def CalculateMean(self, gradientsDir):
+    def CalculateMean(self, gradientsDir, modelName):
         # run a for loop that concatenates all of the input files along the same new dimension ('gradient') then takes the mean along that dimension
         os.chdir(gradientsDir)
 
         # get a list of all of the files in the directory (getting rid of the python checkpoints one)
         gradientFiles = os.listdir(gradientsDir)
-        gradientFiles = [f for f in gradientFiles if '.nc' in f]
+        gradientFiles = [f for f in gradientFiles if '.nc' in f and modelName in f]
 
         # now iterate through the list and concatenate them
 
@@ -196,11 +198,27 @@ class CalculateMMEGradient:
         # now calculating the mean along the gradient dimension
         self.gradientMean = gradientConcat.mean(dim = 'gradient')
 
-        # cutting this off at for the period that we are interested in
-        self.gradientMean = self.gradientMean.ts.sel(time = slice('1850-01-16T12:00:00.000000000', '2022-12-16T12:00:00.000000000'))
+        # cutting this off at for the period that we are interested in (depends on date time format)
+        
+        start_year = 1850
+        monStart = 1
+        dayStart = 1
+        end_year = 2022
+        monEnd = 12
+        dayEnd = 31
+        
+        if isinstance(self.gradientMean.time.values[0], np.datetime64):
+            start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
+            end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
+
+        elif isinstance(self.gradientMean.time.values[0], cftime.DatetimeNoLeap):
+            start_date = cftime.DatetimeNoLeap(start_year, monStart, dayStart)
+            end_date = cftime.DatetimeNoLeap(end_year, monEnd, dayEnd)
+
+        self.gradientMean = self.gradientMean.ts.sel(time = slice(start_date, end_date))
 
     def ExecuteAllSteps(self):
-        self.CalculateMean(self.gradientsDir)
+        self.CalculateMean(self.gradientsDir, self.modelName)
         return self.gradientMean
         
 class CalculateObsGradient:
