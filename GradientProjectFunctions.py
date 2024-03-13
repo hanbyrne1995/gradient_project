@@ -80,6 +80,60 @@ def ClassifyModels(modelList):
     
     return modelsDict
     
+    
+
+def ClassifyHistModelsLite(urlList):
+    '''
+    Function that classifies historical models according to whether they span the full period or not
+    
+    Inputs:
+        urlList: list of historical model urls (per the Haibo openDAP format)
+        
+    Outputs:
+        a dictionary where the keys are either 'Full' or the modelID (i.e., modelName and variant label)
+    '''
+    
+    # initialising a dictionary
+    histModels = defaultdict(list)
+    
+    char = '_'
+    char2 = '.'
+    fullDates = '185001-201412'
+    
+    for url in urlList:
+        # finding Amon
+        indAmon = url.index(char)
+
+        # find the modelName
+        indModelNameStart = url.index(char, indAmon+1) + 1
+        indModelNameEnd = url.index(char, indModelNameStart+1)
+
+        modelName = url[indModelNameStart:indModelNameEnd]
+
+        # find the run variant
+        indVariantStart = url.index(char, indModelNameEnd+1) + 1
+        indVariantEnd = url.index(char, indVariantStart+1)
+
+        modelVariant = url[indVariantStart:indVariantEnd]
+
+        # finding the date range
+        indDateStart = url.index(char, indVariantEnd+2) + 1
+        indDateEnd = url.index(char2, indDateStart)
+
+        dateRange = url[indDateStart:indDateEnd]
+        
+        # now checking whether full or not
+        if dateRange == fullDates:
+            key = 'Full'
+        else:
+            key = modelName + '_' + modelVariant
+            
+        histModels[key].append(url)
+        
+    histModels = dict(histModels)
+    return histModels
+
+
 # defining a function to concatenate shorter time series
 
 def ConcatModels(modelDict):
@@ -140,22 +194,26 @@ def ConcatModels(modelDict):
     
 def ExtendPeriod(key, modelInput, scenarioModels):
     '''
-    NOTE: we are working with MIROC model for the moment, where models are seeded from specific parents; not always the case
     Function that takes in the modelInput output and scenarioModels and combines to make one ds that has the full period from the start of the historical model to the end of the scenario model.
     
     Inputs:
         modelInput: an instance of the ModelInput class
         scenarioModels: dictionary of the scenario models labelled with their source_ids
+    
+    Outputs:
+        modelFullPeriod: a model that spans the full period of the historical and scenario
+        match: a tuple containing an identifier for the scenario model that the historical model was concatenated with and the note of random versus non-random
+            NOTE: this is the variant label and not the parent variant label
     '''
     # the way that this runs depends on whether there's a scenario that matches the historical run in terms of parent
     
     
     if key in list(scenarioModels.keys()):
-
+            
         # execute the code for the situation in which we can directly concatenate the arrays
         dsScenario = ModelInput(scenarioModels[key][0]).ds
         modelFullPeriod = xr.concat([modelInput.ds, dsScenario], dim = 'time')
-        print(f'Non-random - Hist: {key} and Scenario: {scenarioModels[key][0]}')
+        match = (dsScenario.attrs['parent_source_id'] + '_' + dsScenario.attrs['variant_label'], 'Non-random')
 
     else:
 
@@ -165,10 +223,23 @@ def ExtendPeriod(key, modelInput, scenarioModels):
 
         # now randomly select one of the models from the same source_id
         # create a list of source_IDs (as in model names) so that we can choose an index from that list and randomise
+        
+        # first have to flatten any of them that might have subdictionaries
+        scenarioModelsFlat = {}
+
+        for key, value in scenarioModels.items():
+            if len(value) > 1:
+                counter = 0
+                for subValue in value:
+                    scenarioModelsFlat[key + '_' + str(counter)] = subValue
+                    counter += 1
+            else:
+                scenarioModelsFlat[key] = value
+    
         scenarioModelSource = []
 
-        for i in list(scenarioModels.keys()):
-            index = i.rfind('_')
+        for i in list(scenarioModelsFlat.keys()):
+            index = i.index('_')
             modelSource = i[:index]
             scenarioModelSource.append(modelSource)
 
@@ -176,18 +247,19 @@ def ExtendPeriod(key, modelInput, scenarioModels):
         histMask = [modelID == modelHistID for modelID in scenarioModelSource]
 
         # create a list of integers to be the indices
-        indices = list(range(len(list(scenarioModels.keys()))))
+        indices = list(range(len(list(scenarioModelsFlat.keys()))))
 
         # filter for only the indices that have True in the mask
         indicesMatch = [index for index, flag in zip(indices, histMask) if flag]
 
         # select a random index for the source
-        scenarioRandom = list(scenarioModels)[random.choice(indicesMatch)]
-        dsScenario = ModelInput(scenarioModels[scenarioRandom][0]).ds
+        scenarioRandom = list(scenarioModelsFlat)[random.choice(indicesMatch)]
+        dsScenario = ModelInput(scenarioModelsFlat[scenarioRandom]).ds
         modelFullPeriod = xr.concat([modelInput.ds, dsScenario], dim = 'time')
-        print(f'Random - Hist: {modelHistID} - {runHist} and Scenario: {scenarioModels[scenarioRandom][0]}')
+        print(f'Random - Hist: {modelHistID} - {runHist} and Scenario: {scenarioRandom}')
+        match = (dsScenario.attrs['parent_source_id'] + '_' + dsScenario.attrs['variant_label'], 'Random')
     
-    return modelFullPeriod
+    return modelFullPeriod, match
     
     
 def CreateScenarioDictionary(modelListScenario):
