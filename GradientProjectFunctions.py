@@ -232,7 +232,9 @@ def ExtendPeriod(key, modelInput, scenarioModels):
             if len(value) > 1:
                 counter = 0
                 for subValue in value:
-                    scenarioModelsFlat[key + '_' + str(counter)] = subValue
+                    subValueList = []
+                    subValueList.append(subValue)
+                    scenarioModelsFlat[key + '_' + str(counter)] = subValueList
                     counter += 1
             else:
                 scenarioModelsFlat[key] = value
@@ -376,46 +378,56 @@ def lat_lon_res_Eq(ds):
 def CalculateConcatJump(gradientsDir):
     '''
     Function that calculates the jump in the gradient between the end of the historical period and the start of the scenario period normalised 
-    by the standard deviation of the historical
+    by the standard deviation of the historical and the standard deviation of the Jan - Dec differences for the historical
     
     Inputs:
         gradientsDir: directory containing gradient time series
         
     Outputs:
-        A list of these values (in units of std)
+        concatJumpFullHist: A list of values, in units of std of (concat difference - mean of historical period)/std of historical period
+        concatJumpJanDec: A list of values, in units of std of (concat difference - mean of historical difference between Jan and Dec) / std of historial Jan / Dec differences
+        
     '''
-    # run a for loop that concatenates all of the input files along the same new dimension ('gradient') then takes the mean along that dimension
+    # want to add in a function to also have it be compared to Dec / Jan jumps for the rest of the period
     os.chdir(gradientsDir)
 
     # get a list of all of the files in the directory (getting rid of the python checkpoints one)
     gradientFiles = os.listdir(gradientsDir)
     gradientFiles = [f for f in gradientFiles if '.nc' in f]
-
-    # now iterate through the list and concatenate them
-    # adding in another line to check for jump at the concatenation point relative to standard deviation of the historical period
-
-    # first initialise an xarray file for concatenation
-    file1 = xr.open_dataset(gradientFiles[0])
-
-    # have to do the first one manually because of the structure of the for loop
-    concatJump = []
+    concatJumpFullHist = []
+    concatJumpJanDec = []
 
     histStart = '1850-01-16T12:00:00.000000000'
     histEnd = '2014-12-16T12:00:00.000000000'
     scenStart = '2015-01-16T12:00:00.000000000'
-    stdHist = file1.sel(time = slice(histStart, histEnd)).std(dim = 'time').ts.item()
-    jump = (file1.sel(time = histEnd) - file1.sel(time = scenStart)).ts.item()
-    concatJump.append(jump/stdHist)
 
-    for index, file in enumerate(gradientFiles):
-        if index > 0:        
-            # calculating the jump relative to std
-            modelGradient = xr.open_dataset(file)
-            stdHist = modelGradient.sel(time = slice(histStart, histEnd)).std(dim = 'time').ts.item()
-            jump = (modelGradient.sel(time = histEnd) - modelGradient.sel(time = scenStart)).ts.item()
-            concatJump.append(jump/stdHist)
+    for index, file in enumerate(gradientFiles):      
+        # calculating the jump relative to std
+        modelGradient = xr.open_dataset(file)
+        jump = (modelGradient.sel(time = histEnd) - modelGradient.sel(time = scenStart)).ts.item()
+
+        # calculating standard deviation of historical period
+        stdHist = modelGradient.sel(time = slice(histStart, histEnd)).std(dim = 'time').ts.item()
+        meanHist = modelGradient.sel(time = slice(histStart, histEnd)).mean(dim = 'time').ts.item()
+
+        concatJumpFullHist.append((jump - meanHist)/stdHist)
+
+        # calculating difference between December and January for historical period
+        # first selecting the right period so that we have Jan of 1851 and December of 1850 at the start and Jan 2015 and Dec 2014 at the end
+        janStart = '1851-01-16T12:00:00.000000000'
+        janEnd = '2015-02-16T12:00:00.000000000'
+        decStart = '1850-01-16T12:00:00.000000000'
+        decEnd = '2015-01-16T12:00:00.000000000'
+
+        janValues = modelGradient.sel(time = slice(janStart, janEnd)).where(modelGradient['month'] == 1, drop = True).ts.values
+        decValues = modelGradient.sel(time = slice(decStart, decEnd)).where(modelGradient['month'] == 12, drop = True).ts.values
+        janDecDiff = janValues - decValues
+        janDecDiffMean = np.mean(janDecDiff)
+        janDecDiffSTD = np.std(janDecDiff)
+
+        concatJumpJanDec.append((jump - janDecDiffMean)/janDecDiffSTD)
             
-    return concatJump
+    return concatJumpFullHist, concatJumpJanDec
 
 def DictToDf(dictionary):
     '''
