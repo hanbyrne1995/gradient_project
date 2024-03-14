@@ -214,6 +214,7 @@ def ExtendPeriod(key, modelInput, scenarioModels):
         dsScenario = ModelInput(scenarioModels[key][0]).ds
         modelFullPeriod = xr.concat([modelInput.ds, dsScenario], dim = 'time')
         match = (dsScenario.attrs['parent_source_id'] + '_' + dsScenario.attrs['variant_label'], 'Non-random')
+        print(match)
 
     else:
 
@@ -254,10 +255,10 @@ def ExtendPeriod(key, modelInput, scenarioModels):
 
         # select a random index for the source
         scenarioRandom = list(scenarioModelsFlat)[random.choice(indicesMatch)]
-        dsScenario = ModelInput(scenarioModelsFlat[scenarioRandom]).ds
+        dsScenario = ModelInput(scenarioModelsFlat[scenarioRandom][0]).ds
         modelFullPeriod = xr.concat([modelInput.ds, dsScenario], dim = 'time')
-        print(f'Random - Hist: {modelHistID} - {runHist} and Scenario: {scenarioRandom}')
         match = (dsScenario.attrs['parent_source_id'] + '_' + dsScenario.attrs['variant_label'], 'Random')
+        print(match)
     
     return modelFullPeriod, match
     
