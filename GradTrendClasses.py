@@ -66,10 +66,22 @@ class ModelInput:
         except Exception as e:
             
             print(f'Error checking and correcting coordinates: {e}')
+    
+    def FixDate(self):
+        '''
+        Converts all date formats to DateTime64 so no need to check start and end date types
+        '''
+        try:
+            convertedTime = pd.to_datetime(self.ds.time.values.astype(str))
+            self.ds['time'] = ('time', convertedTime)
+        
+        except Exception as e:
+            print(f'Error in converting the time: {e}')
             
     def ExecAllSteps(self):
         self.LoadData(self.modelID)
         self.CleanCoords()
+        self.FixDate()
         return self.ds
         
         
@@ -207,13 +219,8 @@ class CalculateMMEGradient:
         monEnd = 12
         dayEnd = 31
         
-        if isinstance(self.gradientMean.time.values[0], np.datetime64):
-            start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
-            end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
-
-        elif isinstance(self.gradientMean.time.values[0], cftime.DatetimeNoLeap):
-            start_date = cftime.DatetimeNoLeap(start_year, monStart, dayStart)
-            end_date = cftime.DatetimeNoLeap(end_year, monEnd, dayEnd)
+        start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
+        end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
 
         self.gradientMean = self.gradientMean.ts.sel(time = slice(start_date, end_date))
 
@@ -366,13 +373,9 @@ class Trend:
                     else:
                         # create start and end dates for this period to subset the data
                         # check what the format of the time data is (checking the first element)
-                        if isinstance(self.gradient.time.values[0], np.datetime64):
-                            start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
-                            end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
-
-                        elif isinstance(self.gradient.time.values[0], cftime.DatetimeNoLeap):
-                            start_date = cftime.DatetimeNoLeap(start_year, monStart, dayStart)
-                            end_date = cftime.DatetimeNoLeap(end_year, monEnd, dayEnd)
+                        
+                        start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
+                        end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
 
                         # create the subsetted dataset and subsetted time index
                         gradientSubset = self.gradient.sel(time = (self.gradient.time >= start_date) & (self.gradient.time <= end_date))
