@@ -227,6 +227,64 @@ class CalculateMMEGradient:
     def ExecuteAllSteps(self):
         self.CalculateMean(self.gradientsDir, self.modelName)
         return self.gradientMean
+
+class CalcMMEGradSubset:
+    def __init__(self, gradientsDir, modelName, subsetList):
+        '''
+        Like the CalculateMMEGradient class, but includes another input that is a list that the input files must be in (e.g., a list of specific model names)
+        
+        Class that takes in the directory of the pre-calcalulated .nc gradient files, concatenates them and calculates the mean gradient across all of them (specific to MME)
+        
+        :param: gradientsDir: directory with gradient files
+        :param: modelName: name of the model in question
+        :param: subsetList: list of model names (for example) that the input file would need to be in to be included
+        
+        Outputs: gradientMean: dataarray with the mean gradient calculated, modelName pulled from the file names
+        '''
+        self.gradientsDir = gradientsDir
+        self.modelName = modelName
+        self.subsetList = subsetList
+        self.gradient = self.ExecuteAllSteps()
+
+        
+    def CalculateMean(self, gradientsDir, modelName, subsetList):
+        # run a for loop that concatenates all of the input files along the same new dimension ('gradient') then takes the mean along that dimension
+        os.chdir(gradientsDir)
+
+        # get a list of all of the files in the directory (getting rid of the python checkpoints one)
+        gradientFiles = os.listdir(gradientsDir)
+        gradientFiles = [f for f in gradientFiles if '.nc' in f and modelName in f and f[:len(f) - 3] in subsetList]
+
+        # now iterate through the list and concatenate them
+
+        # first initialise an xarray file for concatenation
+        gradientConcat = xr.open_dataset(gradientFiles[0])
+
+        for index, file in enumerate(gradientFiles):
+            if index > 0:
+                modelGradient = xr.open_dataset(file)
+                gradientConcat = xr.concat([gradientConcat, modelGradient], dim = 'gradient')
+
+        # now calculating the mean along the gradient dimension
+        self.gradientMean = gradientConcat.mean(dim = 'gradient')
+
+        # cutting this off at for the period that we are interested in (depends on date time format)
+        
+        start_year = 1850
+        monStart = 1
+        dayStart = 1
+        end_year = 2022
+        monEnd = 12
+        dayEnd = 31
+        
+        start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
+        end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
+
+        self.gradientMean = self.gradientMean.ts.sel(time = slice(start_date, end_date))
+
+    def ExecuteAllSteps(self):
+        self.CalculateMean(self.gradientsDir, self.modelName, self.subsetList)
+        return self.gradientMean
         
 class CalculateObsGradient:
     def __init__(self, modelInput, datasetName):
