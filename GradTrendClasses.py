@@ -380,7 +380,7 @@ class CalculateObsGradient:
         
         
 class Trend:
-    def __init__(self, gradient):
+    def __init__(self, gradient, minTrend, startYear, endYear):
         '''
         Calculates the trends for different start and end points for based on the input gradient time series
         
@@ -392,6 +392,9 @@ class Trend:
         '''
         self.gradient = gradient.gradient
         self.modelName = gradient.modelName
+        self.minTrend = minTrend
+        self.startYear = startYear
+        self.endYear = endYear
         self.trendsDf = None
         self.trends = self.ExecuteAllSteps()
     
@@ -404,21 +407,21 @@ class Trend:
             # initialising timing constants
             monStart = 1 # January
             monEnd = 12   # December
-            yearStart = 1870 # Note that this can be changed 
-            yearEnd = 2022 
+            yearStart = self.startYear # Note that this can be changed 
+            yearEnd = self.endYear
             dayStart = 1
             dayEnd = 31
             interval = 1 # years
             trendLength = 120 # months
-            minTrend = 20 # years
+            minTrend = self.minTrend
             self.trends = {}
 
             # calculating a time index to use in the polyfit
             indexTime = np.arange(len(self.gradient.time))
 
             # for loops to calculate the trends for each start and end year combination
-            for start_year in range(yearStart, yearEnd+1, interval):
-                for end_year in range(yearStart, yearEnd+1, interval):
+            for start_year in range(yearStart, yearEnd+1 - minTrend, interval):
+                for end_year in range(yearStart + minTrend, yearEnd+1, interval):
 
                     # fill the triangle where end date is before start date with NaNs
                     if start_year >= end_year:
@@ -473,7 +476,80 @@ class Trend:
         self.CalculateTrends()
         self.CreateDataFrame()
         return self.trends
+    
+class CalcIntervalDiff:
+    def __init__(self, timeSeries, minInterval):
+        '''
+        Calculates the difference in values between start and end years in an array
         
+        Inputs:
+        ::param timeSeries: an xarray dataarray that has one attribute and has the time dimension in years
+        ::param minInterval: the minimum interval over which you would like the difference to be calculated
+        
+            
+        Outputs:
+            A dictionary of trends for the time periods indicated below
+            A dataframe of trends for the time periods
+        '''
+        self.timeseries = timeSeries
+        self.minInterval = minInterval
+        self.intervalDiffsDf = None
+        self.intervalDiffs = self.ExecuteAllSteps()
+    
+    
+    def CalculateIntervalDiff(self):
+        '''
+        Calculates the moving interval differences (different beginning and end points)
+        '''
+        try:
+            # initialising timing constants
+            yearStart = 1870 # Note that this can be changed | note that 1880 choice is for NASA GISS
+            yearEnd = 2022
+            minInterval = self.minInterval # years
+            self.intervalDiffs = {}
+
+            # for loops to calculate the trends for each start and end year combination
+            for start_year in range(yearStart, yearEnd+1 - minInterval, 1):
+                for end_year in range(yearStart + minInterval, yearEnd+1, 1):
+
+                    # fill the triangle where end date is before start date with NaNs
+                    if start_year >= end_year:
+                        self.intervalDiffs[start_year, end_year] = np.nan
+                    
+                    # fill the triangle in for lengths that are shorter than the minTrend set
+                    elif end_year - start_year < minInterval:
+                        self.intervalDiffs[start_year, end_year] = np.nan
+                
+                    else:
+                        # calculate the difference between the end year and start year values
+                        intervalDiff = self.timeseries.sel(year = end_year) - self.timeseries.sel(year = start_year)
+                        self.intervalDiffs[start_year, end_year] = intervalDiff.item()
+                            
+        except Exception as e:
+            
+            print(f'Error calculating interval differences: {e}')
+            
+    def CreateDataFrame(self):
+        '''
+        Creates a dataframe of the trends that can be stored
+        '''
+        try:
+            self.intervalDiffsDf = pd.DataFrame(list(self.intervalDiffs.items()), columns = ['Year', 'Difference'])
+            self.intervalDiffsDf[['start_year', 'end_year']] = pd.DataFrame(self.intervalDiffsDf['Year'].tolist(), index = self.intervalDiffsDf.index)
+            self.intervalDiffsDf.drop('Year', axis = 1, inplace = True)
+            self.intervalDiffsDf = self.intervalDiffsDf.pivot('end_year', 'start_year', 'Difference')
+            self.intervalDiffsDf = self.intervalDiffsDf.sort_index(ascending = False)
+    
+        
+        except Exception as e:
+            print(f'Error in creating dataframe: {e}')
+        
+        
+    def ExecuteAllSteps(self):
+        self.CalculateIntervalDiff()
+        self.CreateDataFrame()
+        return self.intervalDiffs
+
 class TrendPlotting:    
     def __init__(self, trendsDf, modelName, vmin, vmax, cmap, norm):
         '''
