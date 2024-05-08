@@ -352,8 +352,8 @@ def CreateScenarioDictionaryNonParent(modelListScenario):
         # check that the scenario actually spans the time that we need before saving it
         ds = xr.open_dataset(model)
         sourceID = ds.attrs['source_id']
-        parentVariant = ds.attrs['parent_variant_label']
-        scenarioID = sourceID + '_' + parentVariant
+        memberVariant = ds.attrs['variant_label']
+        scenarioID = sourceID + '_' + memberVariant
 
         # run two versions of checking depending on the format that the date time information is in
         if isinstance(ds.time.values[0], np.datetime64):
