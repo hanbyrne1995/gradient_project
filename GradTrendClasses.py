@@ -18,7 +18,7 @@ class ModelInput:
     def __init__(self, modelID):
         '''
         Takes the input of a modelID (in this case URL), reads in the data and checks the coordinates (makes sure it's lat and lon)
-        :param modelID: A unique ID for the model in the form of an openDAP url or in the form of the dataset itself (to handle the cases where models have been concatenated)
+        :param modelID: A unique ID for the model in the form of an openDAP url or in the form of the dataset itself (to handle the cases where models have been concatenated), or in some cases a list of URLs (for the cases where scenarios were not the full period)
         '''
         self.modelID = modelID
         self.ds = self.ExecAllSteps()
@@ -34,6 +34,9 @@ class ModelInput:
             # checking if we are dealing with a url or dealing with the dataset itself
             if isinstance(modelID, str):
                 self.ds = xr.open_dataset(self.modelID)
+            
+            elif isinstance(modelID, list):
+                self.ds = xr.open_mfdataset(self.modelID)
             
             else:
                 self.ds = modelID
@@ -157,8 +160,9 @@ class Gradient:
             self.weightsW = np.cos(np.radians(self.boxW.lat))
 
             # calculating the mean monthly weighted SST for each box
-            self.meansstE = self.boxE.weighted(self.weightsE).mean(('lat', 'lon'))
-            self.meansstW = self.boxW.weighted(self.weightsW).mean(('lat', 'lon'))
+            # ADDED IN COMPUTE COMMAND HERE
+            self.meansstE = self.boxE.weighted(self.weightsE).mean(('lat', 'lon')).compute()
+            self.meansstW = self.boxW.weighted(self.weightsW).mean(('lat', 'lon')).compute()
 
             # calculate the temperature difference (W - E)
             self.gradient = self.meansstW - self.meansstE
