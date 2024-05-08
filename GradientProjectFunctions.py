@@ -192,6 +192,167 @@ def ConcatModels(modelDict):
     return ds
     
     
+def CreateScenarioDictionary(modelListScenario):
+    '''
+    Creates a dictionary of scenarios that are the right length of time for this study. The keys are the source_ids of the models.
+    
+    Inputs:
+        modelListScenario: the filtered list of URLs from the scenario models that we are interested in
+        
+    Outputs:
+        a dictionary where the keys are the scenarioIDs for the models and the values are the URLs of models that are the right length for this study; Note that scenarioIDs are a combination of the model and
+        parent variant (i.e., the historical model that seeded the model)
+    '''
+    
+    # initialise a defaultdict to store the URLs
+    scenarioModels = defaultdict(list)
+
+    # dates for checking that the scenario fits into the right time
+    nModels = len(modelListScenario)
+    count = 0
+    start_year = 2015
+    monStart = 1
+    dayStart = 31 # because these are sometimes on the 16th of the month
+    end_year = 2022
+    monEnd = 12
+    dayEnd = 1  # because these are sometimes on the 16th of the month as well
+
+    for model in modelListScenario:
+        count +=1
+        # check that the scenario actually spans the time that we need before saving it
+        ds = xr.open_dataset(model)
+        sourceID = ds.attrs['source_id']
+        parentVariant = ds.attrs['parent_variant_label']
+        scenarioID = sourceID + '_' + parentVariant
+
+        # run two versions of checking depending on the format that the date time information is in
+        if isinstance(ds.time.values[0], np.datetime64):
+                start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
+                end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
+
+        elif isinstance(ds.time.values[0], cftime.DatetimeNoLeap):
+            start_date = cftime.DatetimeNoLeap(start_year, monStart, dayStart)
+            end_date = cftime.DatetimeNoLeap(end_year, monEnd, dayEnd)
+
+        # save the URL
+        if (ds.time[0] <= start_date) & (ds.time[-1] >= end_date):
+            # append the value to the list using the source_id as the key
+            scenarioModels[scenarioID].append(model)
+        
+        # keeping track of progress
+        print(f'Scenario dictionary complete: {count} / {nModels}')
+
+    # save the default dict as a dict
+    scenarioModels = dict(scenarioModels)
+    
+    return scenarioModels
+
+def CreateScenarioDictionaryLite(modelListScenario):
+    '''
+    Creates a dictionary of scenarios that are in theory the right length for this study (note that it doesn't explicitly check the range of the dates, but uses the input openDAP url conventions)
+    
+    Inputs:
+        modelListScenario: the filtered list of URLs from the scenario models that we are interested in
+        
+    Outputs:
+        a dictionary where the keys are the scenarioIDs for the models and the values are the URLs of models that are the right length for this study; Note that scenarioIDs are a combination of the model and
+        source variant (i.e., the variant id of the model scenario itself not the parent)
+    '''
+    
+    scenarioModels = defaultdict(list)
+
+    char = '_'
+    char2 = '.'
+    endDate = 202401
+
+    for url in modelListScenario:
+        # finding Amon
+        indAmon = url.index(char)
+
+        # find the modelName
+        indModelNameStart = url.index(char, indAmon+1) + 1
+        indModelNameEnd = url.index(char, indModelNameStart+1)
+
+        modelName = url[indModelNameStart:indModelNameEnd]
+
+        # find the run variant
+        indVariantStart = url.index(char, indModelNameEnd+1) + 1
+        indVariantEnd = url.index(char, indVariantStart+1)
+
+        modelVariant = url[indVariantStart:indVariantEnd]
+
+        key = modelName + '_' + modelVariant
+
+        # finding the date range
+        indDateStart = url.index(char, indVariantEnd+2) + 1
+
+        dateStart = int(url[indDateStart:indDateStart+6])
+
+        # now checking whether full or not
+        if dateStart <= endDate:
+            scenarioModels[key].append(url)
+
+    scenarioModels = dict(scenarioModels)
+    
+    return scenarioModels
+
+def CreateScenarioDictionaryNonParent(modelListScenario):
+    '''
+    *** NOTE: This differs from the CreateScenarioDictionary function in that that function saves the resulting models under the parent ID (i.e., assuming that parent isn't necessarily the same as source ID where this one doesn't)
+ 
+    Creates a dictionary of scenarios that are the right length of time for this study. The keys are the source_ids of the models.
+    
+    Inputs:
+        modelListScenario: the filtered list of URLs from the scenario models that we are interested in
+        
+    Outputs:
+        a dictionary where the keys are the scenarioIDs for the models and the values are the URLs of models that are the right length for this study; Note that scenarioIDs are a combination of the model and
+        source variant (i.e., the variant id of the model scenario itself not the parent)
+    '''
+    
+    # initialise a defaultdict to store the URLs
+    scenarioModels = defaultdict(list)
+
+    # dates for checking that the scenario fits into the right time
+    nModels = len(modelListScenario)
+    count = 0
+    start_year = 2015
+    monStart = 1
+    dayStart = 31 # because these are sometimes on the 16th of the month
+    end_year = 2022
+    monEnd = 12
+    dayEnd = 1  # because these are sometimes on the 16th of the month as well
+
+    for model in modelListScenario:
+        count +=1
+        # check that the scenario actually spans the time that we need before saving it
+        ds = xr.open_dataset(model)
+        sourceID = ds.attrs['source_id']
+        memberVariant = ds.attrs['variant_label']
+        scenarioID = sourceID + '_' + memberVariant
+
+        # run two versions of checking depending on the format that the date time information is in
+        if isinstance(ds.time.values[0], np.datetime64):
+                start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
+                end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
+
+        elif isinstance(ds.time.values[0], cftime.DatetimeNoLeap):
+            start_date = cftime.DatetimeNoLeap(start_year, monStart, dayStart)
+            end_date = cftime.DatetimeNoLeap(end_year, monEnd, dayEnd)
+
+        # save the URL
+        if (ds.time[0] <= start_date) & (ds.time[-1] >= end_date):
+            # append the value to the list using the source_id as the key
+            scenarioModels[scenarioID].append(model)
+        
+        # keeping track of progress
+        print(f'Scenario dictionary complete: {count} / {nModels}')
+
+    # save the default dict as a dict
+    scenarioModels = dict(scenarioModels)
+    
+    return scenarioModels
+
 def ExtendPeriod(key, modelInput, scenarioModels):
     '''
     Function that takes in the modelInput output and scenarioModels and combines to make one ds that has the full period from the start of the historical model to the end of the scenario model.
@@ -263,120 +424,6 @@ def ExtendPeriod(key, modelInput, scenarioModels):
         print(match)
     
     return modelFullPeriod, match
-    
-    
-def CreateScenarioDictionary(modelListScenario):
-    '''
-    Creates a dictionary of scenarios that are the right length of time for this study. The keys are the source_ids of the models.
-    
-    Inputs:
-        modelListScenario: the filtered list of URLs from the scenario models that we are interested in
-        
-    Outputs:
-        a dictionary where the keys are the scenarioIDs for the models and the values are the URLs of models that are the right length for this study; Note that scenarioIDs are a combination of the model and
-        parent variant (i.e., the historical model that seeded the model)
-    '''
-    
-    # initialise a defaultdict to store the URLs
-    scenarioModels = defaultdict(list)
-
-    # dates for checking that the scenario fits into the right time
-    nModels = len(modelListScenario)
-    count = 0
-    start_year = 2015
-    monStart = 1
-    dayStart = 31 # because these are sometimes on the 16th of the month
-    end_year = 2022
-    monEnd = 12
-    dayEnd = 1  # because these are sometimes on the 16th of the month as well
-
-    for model in modelListScenario:
-        count +=1
-        # check that the scenario actually spans the time that we need before saving it
-        ds = xr.open_dataset(model)
-        sourceID = ds.attrs['source_id']
-        parentVariant = ds.attrs['parent_variant_label']
-        scenarioID = sourceID + '_' + parentVariant
-
-        # run two versions of checking depending on the format that the date time information is in
-        if isinstance(ds.time.values[0], np.datetime64):
-                start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
-                end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
-
-        elif isinstance(ds.time.values[0], cftime.DatetimeNoLeap):
-            start_date = cftime.DatetimeNoLeap(start_year, monStart, dayStart)
-            end_date = cftime.DatetimeNoLeap(end_year, monEnd, dayEnd)
-
-        # save the URL
-        if (ds.time[0] <= start_date) & (ds.time[-1] >= end_date):
-            # append the value to the list using the source_id as the key
-            scenarioModels[scenarioID].append(model)
-        
-        # keeping track of progress
-        print(f'Scenario dictionary complete: {count} / {nModels}')
-
-    # save the default dict as a dict
-    scenarioModels = dict(scenarioModels)
-    
-    return scenarioModels
-
-def CreateScenarioDictionaryNonParent(modelListScenario):
-    '''
-    *** NOTE: This differs from the CreateScenarioDictionary function in that that function saves the resulting models under the parent ID (i.e., assuming that parent isn't necessarily the same as source ID where this one doesn't)
- 
-    Creates a dictionary of scenarios that are the right length of time for this study. The keys are the source_ids of the models.
-    
-    Inputs:
-        modelListScenario: the filtered list of URLs from the scenario models that we are interested in
-        
-    Outputs:
-        a dictionary where the keys are the scenarioIDs for the models and the values are the URLs of models that are the right length for this study; Note that scenarioIDs are a combination of the model and
-        source variant (i.e., the variant id of the model scenario itself not the parent)
-    '''
-    
-    # initialise a defaultdict to store the URLs
-    scenarioModels = defaultdict(list)
-
-    # dates for checking that the scenario fits into the right time
-    nModels = len(modelListScenario)
-    count = 0
-    start_year = 2015
-    monStart = 1
-    dayStart = 31 # because these are sometimes on the 16th of the month
-    end_year = 2022
-    monEnd = 12
-    dayEnd = 1  # because these are sometimes on the 16th of the month as well
-
-    for model in modelListScenario:
-        count +=1
-        # check that the scenario actually spans the time that we need before saving it
-        ds = xr.open_dataset(model)
-        sourceID = ds.attrs['source_id']
-        memberVariant = ds.attrs['variant_label']
-        scenarioID = sourceID + '_' + memberVariant
-
-        # run two versions of checking depending on the format that the date time information is in
-        if isinstance(ds.time.values[0], np.datetime64):
-                start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
-                end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
-
-        elif isinstance(ds.time.values[0], cftime.DatetimeNoLeap):
-            start_date = cftime.DatetimeNoLeap(start_year, monStart, dayStart)
-            end_date = cftime.DatetimeNoLeap(end_year, monEnd, dayEnd)
-
-        # save the URL
-        if (ds.time[0] <= start_date) & (ds.time[-1] >= end_date):
-            # append the value to the list using the source_id as the key
-            scenarioModels[scenarioID].append(model)
-        
-        # keeping track of progress
-        print(f'Scenario dictionary complete: {count} / {nModels}')
-
-    # save the default dict as a dict
-    scenarioModels = dict(scenarioModels)
-    
-    return scenarioModels
-    
     
 def RemoveClimatology(modelFullPeriod):
     '''
