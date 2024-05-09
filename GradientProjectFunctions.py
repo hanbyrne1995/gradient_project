@@ -190,6 +190,48 @@ def ConcatModels(modelDict):
         raise ValueError('Concatenated models do not span full period')
     
     return ds
+
+def ConcatModelsLite(modelList):
+    
+    '''
+    For the models that weren't complete from the classify models stage (i.e., didn't cover the full period), concatenate all of the models saved; in the Lite version we are using open_mfdataset instead of the full concatenation piece by piece
+    
+    Inputs:
+        modelList: a list pertaining to a specific model (i.e., from the output of ClassifyModels, this should be modelsDict['Name of model'], which will be a list of urls)
+        
+    Outputs:
+        a full xarray dataset that has been concatenated to the full length; note that it will be chunked 
+    
+    '''
+    # open one of the datasets
+    ds = xr.open_mfdataset(modelList)
+
+    # run a check to make sure that the dataset encompasses the full period
+    start_year = 1850
+    monStart = 1
+    dayStart = 31 # because these are sometimes on the 16th of the month
+    end_year = 2014
+    monEnd = 12
+    dayEnd = 1  # because these are sometimes on the 16th of the month as well
+    
+    # run two versions of checking depending on the format that the date time information is in
+    if isinstance(ds.time.values[0], np.datetime64):
+            start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
+            end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
+
+    elif isinstance(ds.time.values[0], cftime.DatetimeNoLeap):
+        start_date = cftime.DatetimeNoLeap(start_year, monStart, dayStart)
+        end_date = cftime.DatetimeNoLeap(end_year, monEnd, dayEnd)
+
+    # return the full model
+    if (ds.time[0] <= start_date) & (ds.time[-1] >= end_date):
+        return ds
+
+    # run an error message if the datasets are incomplete
+    else:
+        raise ValueError('Concatenated models do not span full period')
+    
+    return ds
     
     
 def CreateScenarioDictionary(modelListScenario):
