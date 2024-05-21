@@ -136,25 +136,25 @@ def ClassifyHistModelsLite(urlList):
 
 # defining a function to concatenate shorter time series
 
-def ConcatModels(modelDict):
+def ConcatModels(modelList):
     
     '''
     For the models that weren't complete from the classify models stage (i.e., didn't cover the full period), concatenate all of the models saved
     
     Inputs:
-        modelDict: a dictionary pertaining to a specific model (i.e., from the output of ClassifyModels, this should be modelsDict['Name of model'])
+        modelList: a list pertaining to a specific model (i.e., from the output of ClassifyModels, this should be modelsDict['Name of model'])
         
     Outputs:
         a full xarray dataset that has been concatenated to the full length
     
     '''
     # open one of the datasets
-    ds = xr.open_dataset(modelDict[0])
+    ds = xr.open_dataset(modelList[0])
     
-    if len(modelDict) > 1:
+    if len(modelList) > 1:
     
-        for i in range(1, len(modelDict)):
-            ds2 = xr.open_dataset(modelDict[i])
+        for i in range(1, len(modelList)):
+            ds2 = xr.open_dataset(modelList[i])
             ds = xr.concat([ds, ds2], dim = 'time')
             
     else:
@@ -164,6 +164,10 @@ def ConcatModels(modelDict):
     # sorting the data by time
     ds = ds.sortby('time')
     
+    # fixing the date time format
+    convertedTime = pd.to_datetime(ds.time.values.astype(str))
+    ds['time'] = ('time', convertedTime)
+    
     # run a check to make sure that the dataset encompasses the full period
     start_year = 1850
     monStart = 1
@@ -172,15 +176,10 @@ def ConcatModels(modelDict):
     monEnd = 12
     dayEnd = 1  # because these are sometimes on the 16th of the month as well
     
-    # run two versions of checking depending on the format that the date time information is in
-    if isinstance(ds.time.values[0], np.datetime64):
-            start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
-            end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
-
-    elif isinstance(ds.time.values[0], cftime.DatetimeNoLeap):
-        start_date = cftime.DatetimeNoLeap(start_year, monStart, dayStart)
-        end_date = cftime.DatetimeNoLeap(end_year, monEnd, dayEnd)
-
+    # define the date range to compare against
+    start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
+    end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')  
+    
     # return the full model
     if (ds.time[0] <= start_date) & (ds.time[-1] >= end_date):
         return ds
@@ -206,6 +205,10 @@ def ConcatModelsLite(modelList):
     # open one of the datasets
     ds = xr.open_mfdataset(modelList)
 
+    # fixing the date time format
+    convertedTime = pd.to_datetime(ds.time.values.astype(str))
+    ds['time'] = ('time', convertedTime)
+    
     # run a check to make sure that the dataset encompasses the full period
     start_year = 1850
     monStart = 1
@@ -214,15 +217,10 @@ def ConcatModelsLite(modelList):
     monEnd = 12
     dayEnd = 1  # because these are sometimes on the 16th of the month as well
     
-    # run two versions of checking depending on the format that the date time information is in
-    if isinstance(ds.time.values[0], np.datetime64):
-            start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
-            end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
-
-    elif isinstance(ds.time.values[0], cftime.DatetimeNoLeap):
-        start_date = cftime.DatetimeNoLeap(start_year, monStart, dayStart)
-        end_date = cftime.DatetimeNoLeap(end_year, monEnd, dayEnd)
-
+    # define the date range to compare against
+    start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
+    end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')  
+    
     # return the full model
     if (ds.time[0] <= start_date) & (ds.time[-1] >= end_date):
         return ds
@@ -291,6 +289,7 @@ def CreateScenarioDictionary(modelListScenario):
 
 def CreateScenarioDictionaryLite(modelListScenario):
     '''
+    ***NOTE: Distince from the other CreateScenarioDictionary functions in that this includes a list of partial URLS for periods that aren't complete versus leaving them out completely
     Creates a dictionary of scenarios that are in theory the right length for this study (note that it doesn't explicitly check the range of the dates, but uses the input openDAP url conventions)
     
     Inputs:
@@ -463,7 +462,7 @@ def ExtendPeriod(key, modelInput, scenarioModels):
         dsScenario = ModelInput(scenarioModelsFlat[scenarioRandom][0]).ds
         modelFullPeriod = xr.concat([modelInput.ds, dsScenario], dim = 'time')
         match = (dsScenario.attrs['parent_source_id'] + '_' + dsScenario.attrs['variant_label'], 'Random')
-        print(match)
+        print(match)    
     
     return modelFullPeriod, match
     
@@ -619,7 +618,7 @@ def TrendsDictFromFiles(trendsDir, modelName):
     # setting time limits for the periods that we're interested in (specifically the start and end dates at the start of the series)
     firstStartYear = 1870
     firstEndYear = 1890
-    lastStartYear = 2002
+    lastStartYear = 2003
 
     for file in trendFiles:
         trendFile = pd.read_csv(file, index_col = 0)
