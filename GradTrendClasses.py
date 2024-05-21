@@ -13,6 +13,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import os
+from scipy.integrate import simps
 
 class ModelInput:
     def __init__(self, modelID):
@@ -302,7 +303,7 @@ class CalculateObsGradient:
         :param modelInput: Instance of ModelInput class
         :param datasetName: String of the name of the dataset in question (e.g., 'Hadley')
         '''
-        self.ds = modelInput
+        self.ds = modelInput.ds
         self.modelName = datasetName
         self.boxE = None # initialising the East and West boxes to be filled
         self.boxW = None
@@ -311,24 +312,6 @@ class CalculateObsGradient:
         self.meansstE = None
         self.meansstW = None
         self.gradient = self.ExecuteAllSteps()
-        
-    def SaveAttrs(self):
-        '''
-        Saves the attributes of the dataset as the modelname that we can use to identify the model going forward
-        '''
-        
-        try:
-            selected_attrs = ['parent_source_id', 'variant_label'] 
-            attributes = {attr: self.ds.attrs[attr] for attr in selected_attrs if attr in self.ds.attrs}
-            self.modelName = '_'.join(attributes.values())
-            
-            # print('Successful attribute finding')
-            
-        except Exception as e:
-            
-            print(f'Error in loading attributes to dictionary: {e}')
-        
-        return self.modelName
         
     def SliceRegions(self):
         '''
@@ -346,8 +329,8 @@ class CalculateObsGradient:
             latminW, latmaxW = -3, 3
 
             # slicing the data into these regions
-            self.boxE = self.ds.sst.sel(lon = slice(lonminE, lonmaxE), lat = slice(latmaxE, latminE))
-            self.boxW = self.ds.sst.sel(lon = slice(lonminW, lonmaxW), lat = slice(latmaxW, latminW))
+            self.boxE = self.ds.sst.sel(lon = slice(lonminE, lonmaxE), lat = slice(latminE, latmaxE))
+            self.boxW = self.ds.sst.sel(lon = slice(lonminW, lonmaxW), lat = slice(latminW, latmaxW))
 
             # print('Successful region slicing')
 
@@ -437,8 +420,6 @@ class Trend:
                 
                     else:
                         # create start and end dates for this period to subset the data
-                        # check what the format of the time data is (checking the first element)
-                        
                         start_date = np.datetime64(f'{start_year}-{monStart:02d}-{dayStart:02d}')
                         end_date = np.datetime64(f'{end_year}-{monEnd:02d}-{dayEnd:02d}')            
 
@@ -554,6 +535,156 @@ class CalcIntervalDiff:
         self.CreateDataFrame()
         return self.intervalDiffs
 
+class CalcPeriodIntegral:
+    def __init__(self, timeSeries, minInterval):
+        '''
+        Calculates the integral of the timeSeries value between every start and end year
+        
+        Inputs:
+        ::param timeSeries: an xarray dataarray that has one attribute and has the time dimension in years
+        ::param minInterval: the minimum interval over which you would like the difference to be calculated
+        
+            
+        Outputs:
+            A dictionary of trends for the time periods indicated below
+            A dataframe of trends for the time periods
+        '''
+        self.timeseries = timeSeries
+        self.minInterval = minInterval
+        self.periodIntegralDf = None
+        self.periodIntegral = self.ExecuteAllSteps()
+    
+    
+    def CalculatePeriodIntegral(self):
+        '''
+        Calculates the integral under the curve between the start and end points
+        '''
+        try:
+            # initialising timing constants
+            yearStart = 1870 # Note that this can be changed | note that 1880 choice is for NASA GISS
+            yearEnd = 2023
+            minInterval = self.minInterval # years
+            self.periodIntegral = {}
+
+            # for loops to calculate the trends for each start and end year combination
+            for start_year in range(yearStart, yearEnd+1 - minInterval, 1):
+                for end_year in range(yearStart + minInterval, yearEnd+1, 1):
+
+                    # fill the triangle where end date is before start date with NaNs
+                    if start_year >= end_year:
+                        self.periodIntegral[start_year, end_year] = np.nan
+                    
+                    # fill the triangle in for lengths that are shorter than the minTrend set
+                    elif end_year - start_year < minInterval:
+                        self.periodIntegral[start_year, end_year] = np.nan
+                
+                    else:
+                        # calculate the difference between the end year and start year values
+                        periodData = self.timeseries.sel(year = slice(yearStart, end_year))
+                        periodIntegralCalc = simps(periodData.year, periodData)
+                        self.periodIntegral[start_year, end_year] = periodIntegralCalc
+                            
+        except Exception as e:
+            
+            print(f'Error calculating period integral: {e}')
+            
+    def CreateDataFrame(self):
+        '''
+        Creates a dataframe of the trends that can be stored
+        '''
+        try:
+            self.periodIntegralDf = pd.DataFrame(list(self.periodIntegral.items()), columns = ['Year', 'Integral'])
+            self.periodIntegralDf[['start_year', 'end_year']] = pd.DataFrame(self.periodIntegralDf['Year'].tolist(), index = self.periodIntegralDf.index)
+            self.periodIntegralDf.drop('Year', axis = 1, inplace = True)
+            self.periodIntegralDf = self.periodIntegralDf.pivot('end_year', 'start_year', 'Integral')
+            self.periodIntegralDf = self.periodIntegralDf.sort_index(ascending = False)
+    
+        
+        except Exception as e:
+            print(f'Error in creating dataframe: {e}')
+        
+        
+    def ExecuteAllSteps(self):
+        self.CalculatePeriodIntegral()
+        self.CreateDataFrame()
+        return self.periodIntegral
+
+class CalcPeriodSD:
+    def __init__(self, timeSeries, minInterval, yearStart = 1870, yearEnd = 2023):
+        '''
+        Calculates the SD of the timeSeries value between every start and end year
+        
+        Inputs:
+        ::param timeSeries: an xarray dataarray that has one attribute and has the time dimension in years
+        ::param yearStart: first year, default is 1870
+        ::param yearEnd: last year; default is 2023
+        ::param minInterval: the minimum interval over which you would like the difference to be calculated
+        
+            
+        Outputs:
+            A dictionary of trends for the time periods indicated below
+            A dataframe of trends for the time periods
+        '''
+        self.timeseries = timeSeries
+        self.yearStart = yearStart
+        self.yearEnd = yearEnd
+        self.minInterval = minInterval
+        self.periodSDDf = None
+        self.periodSD = self.ExecuteAllSteps()
+    
+    
+    def CalculatePeriodSD(self, yearStart, yearEnd):
+        '''
+        Calculates the integral under the curve between the start and end points
+        '''
+        try:
+            # initialising timing constants
+            minInterval = self.minInterval # years
+            self.periodSD = {}
+
+            # for loops to calculate the trends for each start and end year combination
+            for start_year in range(yearStart, yearEnd+1 - minInterval, 1):
+                for end_year in range(yearStart + minInterval, yearEnd+1, 1):
+
+                    # fill the triangle where end date is before start date with NaNs
+                    if start_year >= end_year:
+                        self.periodSD[start_year, end_year] = np.nan
+                    
+                    # fill the triangle in for lengths that are shorter than the minTrend set
+                    elif end_year - start_year < minInterval:
+                        self.periodSD[start_year, end_year] = np.nan
+                
+                    else:
+                        # calculate the difference between the end year and start year values
+                        periodData = self.timeseries.sel(time = slice(str(start_year), str(end_year)))
+                        periodSDCalc = periodData.std().item()
+                        self.periodSD[start_year, end_year] = periodSDCalc
+                            
+        except Exception as e:
+            
+            print(f'Error calculating Standard deviation: {e}')
+            
+    def CreateDataFrame(self):
+        '''
+        Creates a dataframe of the trends that can be stored
+        '''
+        try:
+            self.periodSDDf = pd.DataFrame(list(self.periodSD.items()), columns = ['Year', 'SD'])
+            self.periodSDDf[['start_year', 'end_year']] = pd.DataFrame(self.periodSDDf['Year'].tolist(), index = self.periodSDDf.index)
+            self.periodSDDf.drop('Year', axis = 1, inplace = True)
+            self.periodSDDf = self.periodSDDf.pivot('end_year', 'start_year', 'SD')
+            self.periodSDDf = self.periodSDDf.sort_index(ascending = False)
+    
+        
+        except Exception as e:
+            print(f'Error in creating dataframe: {e}')
+        
+        
+    def ExecuteAllSteps(self):
+        self.CalculatePeriodSD(self.yearStart, self.yearEnd)
+        self.CreateDataFrame()
+        return self.periodSD
+    
 class TrendPlotting:    
     def __init__(self, trendsDf, modelName, vmin, vmax, cmap, norm):
         '''
@@ -602,3 +733,54 @@ class TrendPlotting:
             
         except Exception as e:
             print(f'Error in plotting trends: {e}')
+            
+class TrianglePlotting:    
+    def __init__(self, dataframe, ax, title, vmin, vmax, cmap, norm, cbarLabel):
+        '''
+        Plots the trends calculated in the Gradient class as heatmaps
+
+        :param dataframe: dataframe which is square (typically) with end date as rows and start date as columns
+        :param ax: axis object on which to plot this
+        :param title: title to be printed on the top of the plot (e.g., MIROC6_r1 etc.)
+        :param vmin and vmax: calculated in the script
+        :param cmap: colourmap created with a diverging colour palette
+        :param norm: related to the colourmap
+        :param cbarLabel: string with label for colorbar
+
+        '''
+        self.title = title
+        self.vmin = vmin
+        self.vmax = vmax
+        self.cmap = cmap
+        self.norm = norm
+        self.df = dataframe
+        self.cbarLabel = cbarLabel
+        self.heatmap = None
+
+    def PlotTriangle(self, ax):
+        '''
+        Plot this dataframe as a heatmap.
+        '''
+        try:
+            # creating a figure
+            self.heatmap = sns.heatmap(self.df, 
+                                       ax = ax, 
+                                       vmin = self.vmin, 
+                                       vmax = self.vmax, 
+                                       cmap = self.cmap, 
+                                       xticklabels = 10,
+                                       yticklabels = 10,
+                                       center = 0, 
+                                       cbar = True, 
+                                       norm = self.norm,
+                                       cbar_kws={'shrink': 0.5, 'aspect': 10, 'label': self.cbarLabel})
+
+            plt.xticks(rotation=45)
+            plt.yticks(rotation=0)
+            plt.title(self.title, fontsize = 16)
+            plt.ylabel('End year', fontsize = 12)
+            plt.xlabel('Start year', fontsize = 12)
+
+            
+        except Exception as e:
+            print(f'Error in plotting triangle: {e}')
